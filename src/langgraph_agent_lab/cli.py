@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -80,8 +81,17 @@ def run_scenarios(
     for scenario in scenarios:
         state = initial_state(scenario)
         run_config = {"configurable": {"thread_id": state["thread_id"]}}
+        t0 = time.perf_counter()
         final_state = graph.invoke(state, config=run_config)
-        metrics.append(metric_from_state(final_state, scenario.expected_route.value, scenario.requires_approval))
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        metrics.append(
+            metric_from_state(
+                final_state,
+                scenario.expected_route.value,
+                scenario.requires_approval,
+                latency_ms=latency_ms,
+            )
+        )
     resume_success = _probe_resume_success(graph, scenarios)
     report = summarize_metrics(metrics, resume_success=resume_success)
     write_metrics(report, output)

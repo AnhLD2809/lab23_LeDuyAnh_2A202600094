@@ -5,22 +5,22 @@
 - Họ và tên: Lê Duy Anh
 - Mã số sinh viên: 2A202600094
 - Repo/commit: https://github.com/AnhLD2809/lab23_LeDuyAnh_2A202600094.git
-- Ngày nộp: 2026-05-11
+- Ngày nộp: (fill submission date)
 
 ## 2. Kiến trúc hệ thống
 
 Hệ thống được xây dựng dưới dạng một đồ thị trạng thái (StateGraph) sử dụng LangGraph, bao gồm 11 node xử lý:
 
-- **`intake`** — Chuẩn hoá truy vấn đầu vào (loại bỏ khoảng trắng thừa, che giấu thông tin nhạy cảm PII) và ghi lại sự kiện kiểm toán.
-- **`classify`** — Phân loại truy vấn thành một trong 5 tuyến (route) dựa trên chính sách ưu tiên từ khoá: `risky` → `tool` → `missing_info` → `error` → `simple`.
-- **`tool`** — Gọi công cụ giả lập (mock tool); mô phỏng lỗi tạm thời cho các kịch bản thuộc tuyến `error` để minh hoạ vòng lặp thử lại.
-- **`evaluate`** — Kiểm tra kết quả từ `tool` để quyết định thử lại hay chuyển sang trả lời. Đây là bước kiểm tra "đã xong chưa?" — ưu thế chính của LangGraph so với LCEL.
-- **`retry`** — Ghi nhận lần thử lại, tăng biến đếm `attempt`. Nếu `attempt ≥ max_attempts` thì chuyển sang `dead_letter`.
-- **`answer`** — Tạo câu trả lời cuối cùng dựa trên kết quả từ công cụ và trạng thái phê duyệt.
-- **`clarify`** — Yêu cầu người dùng bổ sung thông tin khi truy vấn quá mơ hồ hoặc khi hành động rủi ro bị từ chối.
-- **`risky_action`** — Chuẩn bị hành động có mức rủi ro cao (ví dụ: hoàn tiền, xoá tài khoản) kèm theo bằng chứng và lý do đánh giá rủi ro.
-- **`approval`** — Bước phê duyệt của con người (Human-in-the-Loop). Hỗ trợ chế độ `interrupt()` thực tế khi đặt biến môi trường `LANGGRAPH_INTERRUPT=true`; mặc định sử dụng phê duyệt giả lập để chạy tự động trong CI/test.
-- **`dead_letter`** — Ghi lại các yêu cầu không thể xử lý sau khi đã vượt quá số lần thử lại tối đa, phục vụ xem xét thủ công.
+- **`intake`** — Chuẩn hoá truy vấn đầu vào (loại bỏ khoảng trắng thừa, che giấu PII qua regex) và ghi lại sự kiện kiểm toán.
+- **`classify`** — Phân loại truy vấn theo chính sách ưu tiên: injection → `risky` → `tool` → `missing_info` → `error` → `simple`.
+- **`tool`** — Gọi công cụ giả lập với khoá idempotent; mô phỏng lỗi tạm thời cho tuyến `error`.
+- **`evaluate`** — Kiểm tra kết quả từ `tool` (bước "done?" — ưu thế chính của LangGraph so với LCEL).
+- **`retry`** — Ghi nhận lần thử lại, tăng `attempt`, kèm metadata exponential-backoff.
+- **`answer`** — Tạo câu trả lời cuối cùng được ground trong tool_results và approval context.
+- **`clarify`** — Yêu cầu người dùng bổ sung thông tin khi truy vấn mơ hồ hoặc khi bị từ chối.
+- **`risky_action`** — Chuẩn bị hành động rủi ro cao kèm evidence và risk justification.
+- **`approval`** — Bước phê duyệt HITL; hỗ trợ `interrupt()` thực khi `LANGGRAPH_INTERRUPT=true`.
+- **`dead_letter`** — Ghi lại yêu cầu không thể xử lý kèm severity level.
 - **`finalize`** — Kết thúc luồng xử lý và ghi lại sự kiện kiểm toán cuối cùng.
 
 ### Sơ đồ luồng xử lý
@@ -39,62 +39,81 @@ START → intake → classify → [định tuyến có điều kiện]
 
 | Trường | Kiểu reducer | Lý do |
 |---|---|---|
-| `route`, `risk_level`, `attempt`, `approval`, `evaluation_result` | ghi đè (overwrite) | Chỉ cần giữ giá trị quyết định/trạng thái mới nhất |
-| `messages` | nối thêm (append) | Lưu toàn bộ lịch sử hội thoại phục vụ kiểm toán |
-| `tool_results` | nối thêm (append) | Lưu lịch sử kết quả từ công cụ để phục vụ gỡ lỗi |
-| `errors` | nối thêm (append) | Theo dõi lịch sử lỗi qua các vòng thử lại |
-| `events` | nối thêm (append) | Ghi lại toàn bộ chuỗi sự kiện trong luồng xử lý để giám sát và chấm điểm |
+| `route`, `risk_level`, `attempt`, `approval`, `evaluation_result` | ghi đè | Chỉ cần giá trị quyết định mới nhất |
+| `messages` | nối thêm | Lưu toàn bộ lịch sử hội thoại phục vụ kiểm toán |
+| `tool_results` | nối thêm | Lưu lịch sử kết quả từ công cụ để phục vụ gỡ lỗi |
+| `errors` | nối thêm | Theo dõi lịch sử lỗi qua các vòng thử lại |
+| `events` | nối thêm | Ghi lại toàn bộ chuỗi sự kiện phục vụ giám sát và chấm điểm |
 
 ## 4. Kết quả chạy kịch bản
 
 ### Tổng quan
 
-- Tổng số kịch bản: **7**
-- Tỷ lệ thành công: **100,00%**
-- Số node trung bình mỗi lần chạy: **6,43**
-- Tổng số lần thử lại: **3**
-- Tổng số lần ngắt HITL: **2**
+- Tổng số kịch bản: **13**
+- Tỷ lệ thành công: **100.00%**
+- Số node trung bình: **7.00**
+- Tổng số lần thử lại: **7**
+- Tổng số lần ngắt HITL: **5**
+- Độ trễ trung bình: **5 ms**
 - Khôi phục sau ngắt: **thành công**
+
+### Phân bố theo tuyến
+
+| simple | tool | risky | error | missing_info |
+|---:|---:|---:|---:|---:|
+| 1 | 2 | 5 | 3 | 2 |
 
 ### Chi tiết từng kịch bản
 
-| Kịch bản | Tuyến kỳ vọng | Tuyến thực tế | Thành công | Thử lại | Ngắt HITL |
-|---|---|---|---:|---:|---:|
-| S01_simple | simple | simple | ✅ | 0 | 0 |
-| S02_tool | tool | tool | ✅ | 0 | 0 |
-| S03_missing | missing_info | missing_info | ✅ | 0 | 0 |
-| S04_risky | risky | risky | ✅ | 0 | 1 |
-| S05_error | error | error | ✅ | 2 | 0 |
-| S06_delete | risky | risky | ✅ | 0 | 1 |
-| S07_dead_letter | error | error | ✅ | 1 | 0 |
+| Kịch bản | Tuyến kỳ vọng | Tuyến thực tế | Thành công | Thử lại | Ngắt HITL | Latency (ms) |
+|---|---|---|---:|---:|---:|---:|
+| S01_simple | simple | simple | ✅ | 0 | 0 | 7 |
+| S02_tool | tool | tool | ✅ | 0 | 0 | 4 |
+| S03_missing | missing_info | missing_info | ✅ | 0 | 0 | 3 |
+| S04_risky | risky | risky | ✅ | 0 | 1 | 5 |
+| S05_error | error | error | ✅ | 3 | 0 | 7 |
+| S06_delete | risky | risky | ✅ | 0 | 1 | 4 |
+| S07_dead_letter | error | error | ✅ | 1 | 0 | 3 |
+| H01_multi_intent | risky | risky | ✅ | 0 | 1 | 5 |
+| H02_ambiguous_missing | missing_info | missing_info | ✅ | 0 | 0 | 2 |
+| H03_prompt_injection | risky | risky | ✅ | 0 | 1 | 5 |
+| H04_tool_disguised | tool | tool | ✅ | 0 | 0 | 4 |
+| H05_fake_approval | risky | risky | ✅ | 0 | 1 | 5 |
+| H06_error_trigger | error | error | ✅ | 3 | 0 | 7 |
 
 ## 5. Phân tích lỗi và trường hợp biên
 
-1. **Vòng lặp thử lại và lỗi công cụ:**
-   - Kịch bản S05 (`error`) mô phỏng lỗi tạm thời (transient failure) trong 2 lần gọi đầu tiên. Hệ thống tự động thử lại và thành công ở lần thứ 3. Cơ chế giới hạn thử lại (`attempt < max_attempts`) đảm bảo vòng lặp không chạy vô hạn.
-   - Kịch bản S07 (`dead_letter`) đặt `max_attempts=1`, khiến yêu cầu bị chuyển thẳng sang `dead_letter` ngay sau lần thử đầu tiên — đúng như thiết kế.
+- All scenarios passed in the last run.
+- Retry behavior observed with total retries = 7.
+- Interrupt/HITL path observed with total interrupts = 5.
 
-2. **Hành động rủi ro khi không được phê duyệt:**
-   - Kịch bản S04 và S06 yêu cầu hành động có rủi ro cao (hoàn tiền, xoá tài khoản). Đồ thị bắt buộc dừng tại node `approval` trước khi thực thi. Trong chế độ HITL thực (`LANGGRAPH_INTERRUPT=true`), nếu bị từ chối, luồng sẽ chuyển sang `clarify` để yêu cầu người dùng đưa ra phương án thay thế an toàn hơn.
+### Cơ chế phòng thủ
 
-3. **Truy vấn mơ hồ:**
-   - Kịch bản S03 ("Can you fix it?") được nhận diện là thiếu thông tin nhờ kiểm tra số lượng từ (< 5 từ) kết hợp với sự hiện diện của đại từ mơ hồ ("it", "this", "that"). Hệ thống yêu cầu bổ sung ngữ cảnh thay vì đoán mò.
+- **Prompt Injection**: Phát hiện các mẫu "ignore previous instructions", "[SYSTEM:" → luôn route sang `risky` với approval bắt buộc.
+- **Đa ý định (multi-intent)**: Khi câu hỏi chứa cả từ khoá risky và tool, ưu tiên risky để đảm bảo an toàn.
+- **Thiếu ngữ cảnh (ambiguous)**: Truy vấn ngắn + đại từ mơ hồ → route sang `missing_info` thay vì đoán.
+- **Dead-letter**: Khi vượt quá `max_attempts` → ghi log kèm severity level cho ops team.
 
-## 6. Bằng chứng về lưu trữ trạng thái và khôi phục (Persistence & Recovery)
+## 6. Bằng chứng về lưu trữ trạng thái và khôi phục
 
-- Sử dụng `MemorySaver` làm checkpointer mặc định khi phát triển. Đường dẫn `SqliteSaver` với chế độ WAL (Write-Ahead Logging) đã được chuẩn bị sẵn cho các bản demo khôi phục sau sự cố.
-- Mỗi kịch bản được gán một `thread_id` riêng biệt (ví dụ: `thread-S04_risky`), đảm bảo lịch sử trạng thái được lưu trữ độc lập cho từng luồng.
-- Kết quả kiểm tra khôi phục: sau khi `interrupt()` được kích hoạt tại node `approval`, hệ thống tiếp tục xử lý thành công bằng `Command(resume=...)` mà không mất dữ liệu trạng thái (`resume_success: true`).
+- Sử dụng `MemorySaver` cho phát triển; `SqliteSaver` (WAL mode) cho demo crash-recovery.
+- Mỗi kịch bản được gán `thread_id` riêng biệt.
+- Resume probe succeeded (interrupt → Command(resume=...) → completion).
 
 ## 7. Các phần mở rộng đã thực hiện
 
-1. **HITL thực tế (Human-in-the-Loop):** Hỗ trợ `interrupt()` của LangGraph tại node `approval` khi đặt biến môi trường `LANGGRAPH_INTERRUPT=true`. Người dùng có thể phê duyệt, từ chối hoặc chỉnh sửa quyết định thông qua giao diện.
-2. **Giao diện Streamlit:** Xây dựng giao diện web cho phép nhập truy vấn, xem luồng xử lý theo thời gian thực, và thao tác phê duyệt/từ chối rồi tiếp tục luồng bằng `Command(resume=...)`.
-3. **SQLite Checkpointer:** Cấu hình `SqliteSaver` với `sqlite3.connect()` và chế độ WAL, sẵn sàng cho demo khôi phục sau sự cố (crash-recovery).
+1. **HITL thực tế**: Hỗ trợ `interrupt()` tại node `approval` khi `LANGGRAPH_INTERRUPT=true`.
+2. **Giao diện Streamlit**: UI cho phép nhập truy vấn, xem luồng xử lý, approve/reject.
+3. **SQLite Checkpointer**: `SqliteSaver` với WAL mode, sẵn sàng cho crash-recovery demo.
+4. **PII Masking**: Tự động che giấu email, phone, SSN, card number trong intake.
+5. **Idempotency Keys**: Tool execution có idempotency key dạng SHA-256.
+6. **Exponential Backoff**: Retry metadata bao gồm backoff timing (cap 30s).
+7. **Hard Scenarios**: Bộ kịch bản khó bao gồm prompt injection, multi-intent, system spoofing.
 
 ## 8. Kế hoạch cải tiến
 
-1. **Nâng cấp bộ đánh giá:** Thay thế phương pháp đánh giá kết quả công cụ bằng heuristic hiện tại bằng bộ xác thực có cấu trúc (structured validator) hoặc chính sách LLM-as-judge để tăng độ chính xác.
-2. **Tích hợp công cụ thực tế:** Thêm các bộ điều hợp công cụ thật (kết nối cơ sở dữ liệu phiếu hỗ trợ / API) kèm theo khoá đảm bảo tính idempotent.
-3. **Hệ thống cảnh báo Dead-Letter:** Tích hợp hàng đợi dead-letter hoặc hệ thống quản lý phiếu để gửi cảnh báo tự động khi có yêu cầu không thể xử lý.
-4. **Bộ kiểm thử hồi quy:** Bổ sung bộ kịch bản kiểm thử dạng diễn giải lại (paraphrase) tương tự các kịch bản ẩn trong bài chấm để đảm bảo hệ thống không bị cứng hoá theo đầu vào cụ thể.
+1. Thay thế heuristic evaluation bằng structured validator hoặc LLM-as-judge.
+2. Thêm tool adapter thực tế (ticket DB/API) với idempotency keys.
+3. Tích hợp dead-letter sink (queue hoặc ticketing system).
+4. Bổ sung regression suite cho paraphrase-style hidden scenarios.
+5. Thêm OpenTelemetry tracing cho observability production-grade.

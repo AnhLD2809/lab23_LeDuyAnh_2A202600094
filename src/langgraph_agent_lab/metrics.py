@@ -34,7 +34,25 @@ class MetricsReport(BaseModel):
     scenario_metrics: list[ScenarioMetric]
 
 
-def metric_from_state(state: dict[str, Any], expected_route: str, approval_required: bool) -> ScenarioMetric:
+def metric_from_state(
+    state: dict[str, Any],
+    expected_route: str,
+    approval_required: bool,
+    latency_ms: int = 0,
+) -> ScenarioMetric:
+    """Extract a ``ScenarioMetric`` from the final graph state.
+
+    Parameters
+    ----------
+    state:
+        The final state dict returned by ``graph.invoke()``.
+    expected_route:
+        The route the scenario was designed to exercise.
+    approval_required:
+        Whether the scenario requires human approval.
+    latency_ms:
+        Wall-clock execution time in milliseconds (measured by the caller).
+    """
     events = state.get("events", []) or []
     errors = state.get("errors", []) or []
     actual_route = state.get("route")
@@ -55,11 +73,13 @@ def metric_from_state(state: dict[str, Any], expected_route: str, approval_requi
         interrupt_count=interrupt_count,
         approval_required=approval_required,
         approval_observed=approval is not None,
+        latency_ms=latency_ms,
         errors=list(errors),
     )
 
 
 def summarize_metrics(items: list[ScenarioMetric], resume_success: bool = False) -> MetricsReport:
+    """Aggregate per-scenario metrics into a summary report."""
     if not items:
         raise ValueError("No scenario metrics to summarize")
     return MetricsReport(
@@ -74,6 +94,7 @@ def summarize_metrics(items: list[ScenarioMetric], resume_success: bool = False)
 
 
 def write_metrics(report: MetricsReport, output_path: str | Path) -> None:
+    """Serialize the metrics report to JSON."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report.model_dump(), indent=2, ensure_ascii=False), encoding="utf-8")
