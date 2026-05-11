@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 
@@ -22,7 +23,10 @@ def build_checkpointer(kind: str = "memory", database_url: str | None = None) ->
             from langgraph.checkpoint.sqlite import SqliteSaver
         except ImportError as exc:
             raise RuntimeError("SQLite checkpointer requires: pip install langgraph-checkpoint-sqlite") from exc
-        return SqliteSaver.from_conn_string(database_url or "checkpoints.db")
+        db_path = database_url or "checkpoints.db"
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        return SqliteSaver(conn=conn)
     if kind == "postgres":
         try:
             from langgraph.checkpoint.postgres import PostgresSaver

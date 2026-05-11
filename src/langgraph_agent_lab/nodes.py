@@ -6,6 +6,8 @@ input state in place.
 
 from __future__ import annotations
 
+import re
+
 from .state import AgentState, ApprovalDecision, Route, make_event
 
 
@@ -28,19 +30,34 @@ def classify_node(state: AgentState) -> dict:
     TODO(student): replace keyword heuristics with a clear routing policy.
     Required routes: simple, tool, missing_info, risky, error.
     """
-    query = state.get("query", "").lower()
-    words = query.split()
-    clean_words = [w.strip("?!.,;:") for w in words]
+    query = state.get("query", "")
+    query_lower = query.lower()
+    tokens = re.findall(r"\b[\w']+\b", query_lower)
+
+    risky_keywords = {
+        "refund",
+        "delete",
+        "send",
+        "cancel",
+        "remove",
+        "revoke",
+        "terminate",
+        "disable",
+    }
+    tool_keywords = {"status", "order", "lookup", "check", "track", "find", "search"}
+    vague_keywords = {"it", "this", "that", "issue", "problem", "thing"}
+    error_keywords = {"timeout", "fail", "failure", "error", "crash", "unavailable"}
+
     route = Route.SIMPLE
     risk_level = "low"
-    if "refund" in query or "delete" in query or "send" in query:
+    if any(token in risky_keywords for token in tokens):
         route = Route.RISKY
         risk_level = "high"
-    elif "status" in query or "order" in query or "lookup" in query:
+    elif any(token in tool_keywords for token in tokens):
         route = Route.TOOL
-    elif len(clean_words) < 5 and "it" in clean_words:
+    elif len(tokens) < 5 and any(token in vague_keywords for token in tokens):
         route = Route.MISSING_INFO
-    elif "timeout" in query or "fail" in query:
+    elif any(token in error_keywords for token in tokens) or "cannot recover" in query_lower:
         route = Route.ERROR
     return {
         "route": route.value,
@@ -54,7 +71,11 @@ def ask_clarification_node(state: AgentState) -> dict:
 
     TODO(student): generate a specific clarification question from state.
     """
-    question = "Can you provide the order id or the missing context?"
+    approval = state.get("approval") or {}
+    if approval and not approval.get("approved", True):
+        question = "The risky request was rejected. Please provide a safer alternative action."
+    else:
+        question = "Can you provide the order id or the missing context?"
     return {
         "pending_question": question,
         "final_answer": question,
@@ -103,12 +124,28 @@ def approval_node(state: AgentState) -> dict:
     if os.getenv("LANGGRAPH_INTERRUPT", "").lower() == "true":
         from langgraph.types import interrupt
 
-        value = interrupt({
-            "proposed_action": state.get("proposed_action"),
-            "risk_level": state.get("risk_level"),
-        })
+        value = interrupt(
+            {
+                "proposed_action": state.get("proposed_action"),
+                "risk_level": state.get("risk_level"),
+            }
+        )
         if isinstance(value, dict):
-            decision = ApprovalDecision(**value)
+            action = str(value.get("action", "")).lower()
+            if action in {"approve", "approved", "continue"}:
+                decision = ApprovalDecision(
+                    approved=True,
+                    reviewer=str(value.get("reviewer", "human-reviewer")),
+                    comment=str(value.get("comment", "approved by human reviewer")),
+                )
+            elif action in {"reject", "rejected", "deny"}:
+                decision = ApprovalDecision(
+                    approved=False,
+                    reviewer=str(value.get("reviewer", "human-reviewer")),
+                    comment=str(value.get("comment", "rejected by human reviewer")),
+                )
+            else:
+                decision = ApprovalDecision(**value)
         else:
             decision = ApprovalDecision(approved=bool(value))
     else:
