@@ -74,7 +74,7 @@ def classify_node(state: AgentState) -> dict:
         "purge",
         "wipe",
     }
-    tool_keywords = {"status", "order", "lookup", "check", "track", "find", "search", "return"}
+    tool_keywords = {"status", "order", "lookup", "check", "track", "find", "search"}
     vague_keywords = {"it", "this", "that", "issue", "problem", "thing"}
     error_keywords = {"timeout", "fail", "failure", "error", "crash", "unavailable", "deadlock", "exception"}
 

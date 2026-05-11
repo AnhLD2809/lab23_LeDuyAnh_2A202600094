@@ -5,7 +5,7 @@
 - Họ và tên: Lê Duy Anh
 - Mã số sinh viên: 2A202600094
 - Repo/commit: https://github.com/AnhLD2809/lab23_LeDuyAnh_2A202600094.git
-- Ngày nộp: 2026-05-11
+- Ngày nộp: (fill submission date)
 
 ## 2. Kiến trúc hệ thống
 
@@ -49,37 +49,39 @@ START → intake → classify → [định tuyến có điều kiện]
 
 ### Tổng quan
 
-- Tổng số kịch bản: **13**
+- Tổng số kịch bản: **15**
 - Tỷ lệ thành công: **100.00%**
-- Số node trung bình: **7.00**
+- Số node trung bình: **6.73**
 - Tổng số lần thử lại: **7**
 - Tổng số lần ngắt HITL: **5**
-- Độ trễ trung bình: **5 ms**
+- Độ trễ trung bình: **4 ms**
 - Khôi phục sau ngắt: **thành công**
 
 ### Phân bố theo tuyến
 
 | simple | tool | risky | error | missing_info |
 |---:|---:|---:|---:|---:|
-| 1 | 2 | 5 | 3 | 2 |
+| 2 | 3 | 5 | 3 | 2 |
 
 ### Chi tiết từng kịch bản
 
 | Kịch bản | Tuyến kỳ vọng | Tuyến thực tế | Thành công | Thử lại | Ngắt HITL | Latency (ms) |
 |---|---|---|---:|---:|---:|---:|
-| S01_simple | simple | simple | ✅ | 0 | 0 | 7 |
-| S02_tool | tool | tool | ✅ | 0 | 0 | 5 |
-| S03_missing | missing_info | missing_info | ✅ | 0 | 0 | 3 |
-| S04_risky | risky | risky | ✅ | 0 | 1 | 5 |
-| S05_error | error | error | ✅ | 3 | 0 | 6 |
-| S06_delete | risky | risky | ✅ | 0 | 1 | 5 |
-| S07_dead_letter | error | error | ✅ | 1 | 0 | 4 |
-| H01_multi_intent | risky | risky | ✅ | 0 | 1 | 5 |
-| H02_ambiguous_missing | missing_info | missing_info | ✅ | 0 | 0 | 3 |
-| H03_prompt_injection | risky | risky | ✅ | 0 | 1 | 5 |
-| H04_tool_disguised | tool | tool | ✅ | 0 | 0 | 4 |
-| H05_fake_approval | risky | risky | ✅ | 0 | 1 | 4 |
-| H06_error_trigger | error | error | ✅ | 3 | 0 | 6 |
+| G01_simple | simple | simple | ✅ | 0 | 0 | 8 |
+| G02_simple2 | simple | simple | ✅ | 0 | 0 | 3 |
+| G03_tool | tool | tool | ✅ | 0 | 0 | 4 |
+| G04_tool2 | tool | tool | ✅ | 0 | 0 | 4 |
+| G05_tool3 | tool | tool | ✅ | 0 | 0 | 4 |
+| G06_missing | missing_info | missing_info | ✅ | 0 | 0 | 3 |
+| G07_missing2 | missing_info | missing_info | ✅ | 0 | 0 | 3 |
+| G08_risky | risky | risky | ✅ | 0 | 1 | 5 |
+| G09_risky2 | risky | risky | ✅ | 0 | 1 | 4 |
+| G10_risky3 | risky | risky | ✅ | 0 | 1 | 6 |
+| G11_risky4 | risky | risky | ✅ | 0 | 1 | 5 |
+| G12_error | error | error | ✅ | 3 | 0 | 5 |
+| G13_error2 | error | error | ✅ | 3 | 0 | 5 |
+| G14_dead | error | error | ✅ | 1 | 0 | 3 |
+| G15_mixed | risky | risky | ✅ | 0 | 1 | 5 |
 
 ## 5. Phân tích lỗi và trường hợp biên
 

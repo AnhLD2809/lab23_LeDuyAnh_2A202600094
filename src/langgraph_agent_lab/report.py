@@ -27,22 +27,22 @@ def render_report(metrics: MetricsReport) -> str:
 
     if failure_count > 0:
         failure_analysis = [
-            f"- {failure_count} scenario(s) failed in the last run.",
-            f"- Failed: {', '.join(item.scenario_id for item in failed_scenarios)}.",
-            f"- Dead-letter observed in: {', '.join(dead_letter_cases) if dead_letter_cases else 'none'}.",
-            "- Review `outputs/metrics.json` error arrays for root-cause analysis.",
+            f"- {failure_count} kịch bản thất bại trong lần chạy cuối cùng.",
+            f"- Thất bại: {', '.join(item.scenario_id for item in failed_scenarios)}.",
+            f"- Dead-letter xuất hiện tại: {', '.join(dead_letter_cases) if dead_letter_cases else 'không có'}.",
+            "- Xem mảng `errors` trong `outputs/metrics.json` để phân tích nguyên nhân gốc.",
         ]
     else:
         failure_analysis = [
-            "- All scenarios passed in the last run.",
-            f"- Retry behavior observed with total retries = {metrics.total_retries}.",
-            f"- Interrupt/HITL path observed with total interrupts = {metrics.total_interrupts}.",
+            "- Tất cả kịch bản đều đạt trong lần chạy cuối cùng.",
+            f"- Cơ chế thử lại hoạt động đúng: tổng số lần retry = {metrics.total_retries}.",
+            f"- Luồng phê duyệt HITL hoạt động đúng: tổng số lần interrupt = {metrics.total_interrupts}.",
         ]
 
     persistence_note = (
-        "Resume probe succeeded (interrupt → Command(resume=...) → completion)."
+        "Kiểm tra khôi phục thành công (interrupt → Command(resume=...) → hoàn thành)."
         if metrics.resume_success
-        else "Resume probe was not executed or did not succeed in this run."
+        else "Kiểm tra khôi phục chưa được thực hiện hoặc không thành công trong lần chạy này."
     )
 
     # Categorize scenarios by tag type for analysis
